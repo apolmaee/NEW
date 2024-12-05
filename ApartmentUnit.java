@@ -17,6 +17,7 @@ import javax.swing.table.DefaultTableModel;
 public class ApartmentUnit extends javax.swing.JInternalFrame {
 
     private Connection connect;
+    private int maxCapacity;
     public ApartmentUnit() {
         initComponents();
         
@@ -35,7 +36,7 @@ public class ApartmentUnit extends javax.swing.JInternalFrame {
     
     private void reloadUnitData() {
     try {
-        String selectQuery = "SELECT au.ApateuID, au.UnitNo, au.MRate, uc.UnitType, uc.Description, au.UnitStatus " +
+        String selectQuery = "SELECT au.ApateuID, au.UnitNo, au.MRate, uc.UnitType, uc.Description, au.UnitStatus, au.MaxCapacity " +
                              "FROM apartmentunit au " +
                              "JOIN unitcategories uc ON au.UnitID = uc.UnitID";
 
@@ -52,7 +53,8 @@ public class ApartmentUnit extends javax.swing.JInternalFrame {
                 rs.getString("UnitType"),     
                 rs.getString("Description"),            
                 rs.getString("MRate"),
-                rs.getString("UnitStatus")
+                rs.getString("UnitStatus"),
+                rs.getString("MaxCapacity")
             };
             model.addRow(row);  
         }
@@ -100,31 +102,35 @@ public class ApartmentUnit extends javax.swing.JInternalFrame {
 }
 
     public boolean isUnitAvailable(String unitNo) throws SQLException {
-        PreparedStatement pst = connect.prepareStatement(
-            "SELECT COUNT(*) AS tenantCount FROM tenant WHERE UnitNo = ?");
-        pst.setString(1, unitNo);
-        ResultSet rs = pst.executeQuery();
+    if (UnitCapacityFull(unitNo)) {
+        JOptionPane.showMessageDialog(null, "Unit " + unitNo + " is full.");
+        return false; // Unit is not available if full
+    }
 
-        if (rs.next()) {
-            int tenantCount = rs.getInt("tenantCount");
-            JOptionPane.showMessageDialog(null, "Tenant Count for unit " + unitNo + ": " + tenantCount);
+    String statusQuery = "SELECT UnitStatus FROM apartmentunit WHERE UnitNo = ?";
+    try (PreparedStatement statusStmt = connect.prepareStatement(statusQuery)) {
+        statusStmt.setString(1, unitNo);
+        ResultSet rsStatus = statusStmt.executeQuery();
 
-            PreparedStatement statusStmt = connect.prepareStatement(
-                "SELECT UnitStatus FROM apartmentunit WHERE UnitNo = ?");
-            statusStmt.setString(1, unitNo);
-            ResultSet rsStatus = statusStmt.executeQuery();
-
-            if (rsStatus.next()) {
-                String unitStatus = rsStatus.getString("UnitStatus");
-                JOptionPane.showMessageDialog(null, "Unit Status: " + unitStatus);
-
-                if (unitStatus.equals("Occupied") || tenantCount > 0) {
-                    return false;
+        if (rsStatus.next()) {
+            String unitStatus = rsStatus.getString("UnitStatus");
+            if (unitStatus.equals("Occupied")) {
+                int tenantCount = getTenantCount(unitNo);
+                int maxCapacity = getMaxCapacity(unitNo);
+                if (tenantCount < maxCapacity) {
+                    // UnitStatus may be incorrect; log a warning
+                    JOptionPane.showMessageDialog(null, 
+                        "Warning: UnitStatus 'Occupied' but unit has space. Updating status.");
+                    updateUnitStatus(unitNo); // Corrects the status
+                    return true;
                 }
             }
+            return !unitStatus.equals("Occupied");
         }
-        return true; 
     }
+    return true; // Default to available if no status is found
+}
+
 
 public void updateUnitStatus(String unitNo) throws SQLException {
     String countQuery = "SELECT COUNT(*) AS tenantCount FROM tenant WHERE UnitNo = ?";
@@ -145,32 +151,33 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                     String unitStatus = rsStatus.getString("UnitStatus");
                     JOptionPane.showMessageDialog(null, "Unit Status before update: " + unitStatus);
 
-                    if (tenantCount > 0 && unitStatus != null && unitStatus.equals("Available")) {
-                        String updateStatusQuery = "UPDATE apartmentunit SET UnitStatus = 'Occupied' WHERE UnitNo = ?";
-                        try (PreparedStatement updateStmt = connect.prepareStatement(updateStatusQuery)) {
-                            updateStmt.setString(1, unitNo);
-                            int rowsUpdated = updateStmt.executeUpdate();
-                            if (rowsUpdated > 0) {
-                                JOptionPane.showMessageDialog(null, "Unit status updated to Occupied.");
-                            } else {
-                                JOptionPane.showMessageDialog(null, "Error updating unit status.");
-                            }
-                        }
+                    if (tenantCount >= maxCapacity  && unitStatus != null && unitStatus.equals("Available")) {
+    String updateStatusQuery = "UPDATE apartmentunit SET UnitStatus = 'Occupied' WHERE UnitNo = ?";
+    try (PreparedStatement updateStmt = connect.prepareStatement(updateStatusQuery)) {
+        updateStmt.setString(1, unitNo);
+        int rowsUpdated = updateStmt.executeUpdate();
+        if (rowsUpdated > 0) {
+            JOptionPane.showMessageDialog(null, "Unit status updated to Occupied.");
+        } else {
+            JOptionPane.showMessageDialog(null, "Error updating unit status.");
+        }
+    }
                         reloadUnitData();
                         UnitTable.repaint(); 
                     }
 
-                    else if (tenantCount == 0 && unitStatus != null && unitStatus.equals("Occupied")) {
-                        String updateStatusQuery = "UPDATE apartmentunit SET UnitStatus = 'Available' WHERE UnitNo = ?";
-                        try (PreparedStatement updateStmt = connect.prepareStatement(updateStatusQuery)) {
-                            updateStmt.setString(1, unitNo);
-                            int rowsUpdated = updateStmt.executeUpdate();
-                            if (rowsUpdated > 0) {
-                                JOptionPane.showMessageDialog(null, "Unit status updated to Available.");
-                            } else {
-                                JOptionPane.showMessageDialog(null, "Error updating unit status.");
-                            }
-                        }
+                    else if (tenantCount < maxCapacity && unitStatus != null && unitStatus.equals("Occupied")) {
+    String updateStatusQuery = "UPDATE apartmentunit SET UnitStatus = 'Available' WHERE UnitNo = ?";
+    try (PreparedStatement updateStmt = connect.prepareStatement(updateStatusQuery)) {
+        updateStmt.setString(1, unitNo);
+        int rowsUpdated = updateStmt.executeUpdate();
+        if (rowsUpdated > 0) {
+            JOptionPane.showMessageDialog(null, "Unit status updated to Available.");
+        } else {
+            JOptionPane.showMessageDialog(null, "Error updating unit status.");
+        }
+    }
+
 
                         reloadUnitData();
                         UnitTable.repaint();
@@ -187,6 +194,60 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         System.out.println("SQL Error: " + e.getMessage());
     }
 }
+
+public boolean UnitCapacityFull(String unitNo) throws SQLException {
+    String capacityQuery = "SELECT MaxCapacity FROM apartmentunit WHERE UnitNo = ?";
+    try (PreparedStatement capacityStmt = connect.prepareStatement(capacityQuery)) {
+        capacityStmt.setString(1, unitNo);
+        ResultSet rsCapacity = capacityStmt.executeQuery();
+        
+        if (rsCapacity.next()) {
+            int maxCapacity = rsCapacity.getInt("MaxCapacity");
+            String countQuery = "SELECT COUNT(*) AS tenantCount FROM tenant WHERE UnitNo = ?";
+            
+            try (PreparedStatement tenantCountStmt = connect.prepareStatement(countQuery)) {
+                tenantCountStmt.setString(1, unitNo);
+                ResultSet rsTenantCount = tenantCountStmt.executeQuery();
+                
+                if (rsTenantCount.next()) {
+                    int currentTenants = rsTenantCount.getInt("tenantCount");
+                    JOptionPane.showMessageDialog(null, 
+                        "Unit " + unitNo + ": Current Tenants = " + currentTenants + ", Max Capacity = " + maxCapacity);
+
+                    return currentTenants >= maxCapacity; // Returns true if full
+                }
+            }
+        } else {
+            JOptionPane.showMessageDialog(null, "Unit not found in apartmentunit table.");
+        }
+    }
+    return false; // Default to not full if no data is found
+}
+
+private int getTenantCount(String unitNo) throws SQLException {
+    String countQuery = "SELECT COUNT(*) AS tenantCount FROM tenant WHERE UnitNo = ?";
+    try (PreparedStatement pst = connect.prepareStatement(countQuery)) {
+        pst.setString(1, unitNo);
+        ResultSet rs = pst.executeQuery();
+        if (rs.next()) {
+            return rs.getInt("tenantCount");
+        }
+    }
+    return 0; // Default to 0 if no data
+}
+
+private int getMaxCapacity(String unitNo) throws SQLException {
+    String capacityQuery = "SELECT MaxCapacity FROM apartmentunit WHERE UnitNo = ?";
+    try (PreparedStatement pst = connect.prepareStatement(capacityQuery)) {
+        pst.setString(1, unitNo);
+        ResultSet rs = pst.executeQuery();
+        if (rs.next()) {
+            return rs.getInt("MaxCapacity");
+        }
+    }
+    return 0; // Default to 0 if no data
+}
+
     
     @SuppressWarnings("unchecked")
     // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
@@ -211,6 +272,8 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         MonthlyRate = new javax.swing.JTextField();
         Select = new javax.swing.JButton();
         Refresh = new javax.swing.JButton();
+        Capacity = new javax.swing.JTextField();
+        jLabel14 = new javax.swing.JLabel();
         jLabel9 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
         jPanel4 = new javax.swing.JPanel();
@@ -321,6 +384,16 @@ public void updateUnitStatus(String unitNo) throws SQLException {
             }
         });
 
+        Capacity.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(0, 0, 0)));
+        Capacity.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                CapacityActionPerformed(evt);
+            }
+        });
+
+        jLabel14.setFont(new java.awt.Font("SansSerif", 1, 14)); // NOI18N
+        jLabel14.setText("CAPACITY");
+
         javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
         jPanel3.setLayout(jPanel3Layout);
         jPanel3Layout.setHorizontalGroup(
@@ -359,19 +432,21 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                     .addGroup(jPanel3Layout.createSequentialGroup()
                         .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel3Layout.createSequentialGroup()
-                                .addGap(32, 32, 32)
-                                .addComponent(jLabel15))
+                                .addGap(60, 60, 60)
+                                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(jLabel14)
+                                    .addComponent(jLabel13))
+                                .addGap(31, 31, 31)
+                                .addComponent(UnitNo, javax.swing.GroupLayout.PREFERRED_SIZE, 174, javax.swing.GroupLayout.PREFERRED_SIZE))
                             .addGroup(jPanel3Layout.createSequentialGroup()
-                                .addGap(72, 72, 72)
-                                .addComponent(jLabel13)))
-                        .addGap(18, 18, 18)
-                        .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(jPanel3Layout.createSequentialGroup()
-                                .addComponent(UnitNo, javax.swing.GroupLayout.PREFERRED_SIZE, 174, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(0, 0, Short.MAX_VALUE))
-                            .addGroup(jPanel3Layout.createSequentialGroup()
-                                .addComponent(MonthlyRate, javax.swing.GroupLayout.PREFERRED_SIZE, 174, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))))
+                                .addGap(31, 31, 31)
+                                .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addGroup(jPanel3Layout.createSequentialGroup()
+                                        .addComponent(jLabel15)
+                                        .addGap(18, 18, 18)
+                                        .addComponent(MonthlyRate, javax.swing.GroupLayout.PREFERRED_SIZE, 174, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                    .addComponent(Capacity, javax.swing.GroupLayout.PREFERRED_SIZE, 174, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                        .addGap(0, 0, Short.MAX_VALUE))))
         );
         jPanel3Layout.setVerticalGroup(
             jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -398,11 +473,14 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                     .addComponent(jLabel10)
                     .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addGroup(jPanel3Layout.createSequentialGroup()
-                        .addGap(12, 12, 12)
+                        .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(Capacity, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel14))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                         .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(MonthlyRate, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel15))
-                        .addGap(30, 30, 30)
+                        .addGap(18, 18, 18)
                         .addGroup(jPanel3Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(jbtnAdd, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jbtnUpdate)
@@ -426,17 +504,17 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         UnitTable.setBackground(new java.awt.Color(204, 204, 204));
         UnitTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null, null},
-                {null, null, null, null, null, null},
-                {null, null, null, null, null, null},
-                {null, null, null, null, null, null}
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null}
             },
             new String [] {
-                "UnitID", "Aprtment Unit No", "Unit Type", "Description", "Monthly Rate", "Unit Status"
+                "UnitID", "Aprtment Unit No", "Unit Type", "Description", "Monthly Rate", "Unit Status", "Capacity"
             }
         ) {
             boolean[] canEdit = new boolean [] {
-                false, false, false, false, false, true
+                false, false, false, false, false, true, true
             };
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -487,6 +565,8 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         if (rs.next()) {
             UnitNo.setText(rs.getString("UnitNo"));
             MonthlyRate.setText(rs.getString("MRate"));
+            Capacity.setText(rs.getString("MaxCapacity"));
+            
             
             String unitType = rs.getString("UnitType"); 
             String description = rs.getString("Description");
@@ -500,6 +580,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
             MonthlyRate.setText("");
             UnitType.setSelectedIndex(0);
             Description.setText("");
+            Capacity.setText("");
         }
 
     } catch (SQLException ex) {
@@ -512,6 +593,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         try {
         String unitno = UnitNo.getText();
         String mrate = MonthlyRate.getText();
+        String capacity = Capacity.getText();
         String unitType = UnitType.getSelectedItem().toString(); 
 
         if (unitno.isEmpty() || mrate.isEmpty() || unitType.isEmpty()) {
@@ -527,7 +609,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                 String description = rs.getString("Description"); 
 
                 PreparedStatement insertStmt = connect.prepareStatement(
-                    "INSERT INTO apartmentunit (`UnitNo`, `MRate`, `UnitID`, `UnitType`, `Description`, `UnitStatus`) VALUES (?, ?, ?, ?, ?, ?)");
+                    "INSERT INTO apartmentunit (`UnitNo`, `MRate`, `UnitID`, `UnitType`, `Description`, `UnitStatus`, `MaxCapacity`) VALUES (?, ?, ?, ?, ?, ?, ?)");
 
                 insertStmt.setString(1, unitno);            
                 insertStmt.setString(2, mrate);       
@@ -535,7 +617,8 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                 insertStmt.setString(4, unitType);
                 insertStmt.setString(5, description);
                 insertStmt.setString(6, "Available");
-
+                insertStmt.setString(7, capacity);
+                
                 int k = insertStmt.executeUpdate();
 
                 UnitNo.setText("");
@@ -561,18 +644,21 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         try {
             String unitno = UnitNo.getText();
             String mrate = MonthlyRate.getText();
+            String capacity = Capacity.getText();
             String unittypeid =  jAUnitID.getSelectedItem().toString();
 
-            if (unitno.isEmpty() || mrate.isEmpty()) {
+            if (unitno.isEmpty() || mrate.isEmpty() || capacity.isEmpty()) {
                 JOptionPane.showMessageDialog(null, "Please fill in all the required fields.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
-            PreparedStatement pst = connect.prepareStatement("UPDATE apartmentunit SET UnitNo = ?, MRate = ? WHERE ApateuID = ?");
+            PreparedStatement pst = connect.prepareStatement("UPDATE apartmentunit SET UnitNo = ?, MRate = ?, MaxCapacity = ?  WHERE ApateuID = ?");
 
             pst.setString(1, unitno);  
-            pst.setString(2, mrate);    
-            pst.setString(3, unittypeid); 
+            pst.setString(2, mrate);   
+            pst.setString(3, capacity); 
+            pst.setString(4,unittypeid);
+            
 
             int k = pst.executeUpdate();
 
@@ -580,6 +666,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                 JOptionPane.showMessageDialog(this,"Record has been successfully updated");
                 UnitNo.setText("");
                 MonthlyRate.setText("");
+                Capacity.setText("");
                 UnitNo.requestFocus();
                 reloadUnitData();
 
@@ -615,6 +702,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
                 UnitNo.setText("");
                 MonthlyRate.setText("");
                 UnitNo.requestFocus(); 
+                Capacity.setText("");
                 reloadUnitData(); 
             } else {
                 JOptionPane.showMessageDialog(this, "Failed to delete the record");
@@ -673,13 +761,19 @@ public void updateUnitStatus(String unitNo) throws SQLException {
         Description.setText("");      
         UnitType.setSelectedIndex(0); 
         jAUnitID.setSelectedIndex(0); 
+        Capacity.setText("");   
 
         populateUnitTypeComboBox();   
         reloadUnitData();
     }//GEN-LAST:event_RefreshActionPerformed
 
+    private void CapacityActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_CapacityActionPerformed
+        // TODO add your handling code here:
+    }//GEN-LAST:event_CapacityActionPerformed
+
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JTextField Capacity;
     private javax.swing.JTextArea Description;
     private javax.swing.JTextField MonthlyRate;
     private javax.swing.JButton Refresh;
@@ -693,6 +787,7 @@ public void updateUnitStatus(String unitNo) throws SQLException {
     private javax.swing.JLabel jLabel11;
     private javax.swing.JLabel jLabel12;
     private javax.swing.JLabel jLabel13;
+    private javax.swing.JLabel jLabel14;
     private javax.swing.JLabel jLabel15;
     private javax.swing.JLabel jLabel8;
     private javax.swing.JLabel jLabel9;
