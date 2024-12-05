@@ -70,9 +70,65 @@ public class Tenant extends javax.swing.JInternalFrame {
         }
 
     } catch (SQLException ex) {
-        Logger.getLogger(UnitCategories.class.getName()).log(Level.SEVERE, null, ex);
+        Logger.getLogger(Tenant.class.getName()).log(Level.SEVERE, null, ex);
         JOptionPane.showMessageDialog(this, "Error occurred while populating Unit Types.");
     }
+}
+   
+   private String getTenantDetailsFromDatabase(int tenantID) {
+    String details = "";
+       try {
+         PreparedStatement stmt = connect.prepareStatement("SELECT * FROM tenant WHERE TenantID = ?");
+        
+        stmt.setInt(1, tenantID);
+        ResultSet rs = stmt.executeQuery();
+        
+        if (rs.next()) {
+            details += "Tenant ID: " + rs.getInt("TenantID") + "\n";
+            details += "First Name: " + rs.getString("FirstName") + "\n";
+            details += "Last Name: " + rs.getString("LastName") + "\n";
+            details += "Contact: " + rs.getString("ContactInfo") + "\n";
+            details += "Email: " + rs.getString("Email") + "\n";
+            details += "Registered Date: " + rs.getString("RegisterDate") + "\n";
+            details += "Apartment ID: " + rs.getString("ApateuID") + "\n";
+            details += "Unit No: " + rs.getString("UnitNo") + "\n";
+        } else {
+            details = "No details available.";
+        }
+    } catch (SQLException e) {
+        e.printStackTrace();
+        details = "Error fetching details.";
+    }
+    return details;
+}
+   
+   private String getPaymentDetailsFromDatabase(int tenantID) {
+    String paymentDetails = "";
+    try {
+        PreparedStatement stmt = connect.prepareStatement(
+            "SELECT * FROM payment WHERE TenantID = ?"
+        );
+        stmt.setInt(1, tenantID);
+        ResultSet rs = stmt.executeQuery();
+
+        while (rs.next()) {
+            paymentDetails += "Payment ID: " + rs.getInt("PaymentID") + "\n";
+            paymentDetails += "Billing ID: " + rs.getString("BillingID") + "\n";
+            paymentDetails += "Toal Rent Bill: " + rs.getDouble("TotalRentBill") + "\n";
+            paymentDetails += "Amount Paid: " + rs.getString("AmountPaid") + "\n";
+            paymentDetails += "Payment Date: " + rs.getString("PaymentDate") + "\n";
+            paymentDetails += "Receipt No: " + rs.getString("ReceiptNo") + "\n";
+            paymentDetails += "---------------------------------\n";
+        }
+
+        if (paymentDetails.isEmpty()) {
+            paymentDetails = "No payment details available.";
+        }
+    } catch (SQLException e) {
+        e.printStackTrace();
+        paymentDetails = "Error fetching payment details.";
+    }
+    return paymentDetails;
 }
    
     @SuppressWarnings("unchecked")
@@ -106,6 +162,7 @@ public class Tenant extends javax.swing.JInternalFrame {
         jSeparator2 = new javax.swing.JSeparator();
         Refresh = new javax.swing.JButton();
         ChooseDate = new com.toedter.calendar.JDateChooser();
+        jtxtTenantDetails = new javax.swing.JButton();
         jLabel3 = new javax.swing.JLabel();
 
         jPanel1.setBackground(new java.awt.Color(204, 204, 255));
@@ -260,6 +317,17 @@ public class Tenant extends javax.swing.JInternalFrame {
             }
         });
 
+        jtxtTenantDetails.setBackground(new java.awt.Color(102, 102, 102));
+        jtxtTenantDetails.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
+        jtxtTenantDetails.setForeground(new java.awt.Color(204, 204, 204));
+        jtxtTenantDetails.setText("Tenant Details");
+        jtxtTenantDetails.setBorder(javax.swing.BorderFactory.createBevelBorder(javax.swing.border.BevelBorder.RAISED, new java.awt.Color(51, 51, 51), new java.awt.Color(255, 255, 204)));
+        jtxtTenantDetails.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jtxtTenantDetailsActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
@@ -267,46 +335,45 @@ public class Tenant extends javax.swing.JInternalFrame {
             .addGroup(jPanel2Layout.createSequentialGroup()
                 .addGap(21, 21, 21)
                 .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 645, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
+                        .addGap(0, 0, Short.MAX_VALUE)
                         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
-                                .addGap(0, 0, Short.MAX_VALUE)
-                                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(jLabel10)
-                                    .addComponent(jSeparator2, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 281, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(ChooseDate, javax.swing.GroupLayout.PREFERRED_SIZE, 173, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                            .addGroup(jPanel2Layout.createSequentialGroup()
-                                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                                        .addComponent(Search, javax.swing.GroupLayout.PREFERRED_SIZE, 80, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addGroup(jPanel2Layout.createSequentialGroup()
-                                            .addComponent(jLabel9)
-                                            .addGap(18, 18, 18)
-                                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                                .addComponent(jLabel11)
-                                                .addComponent(TenantID, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                                    .addComponent(jLabel2)
-                                    .addComponent(LastName, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel4)
-                                    .addComponent(FirstName, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel5)
-                                    .addComponent(ContactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(Email, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addGroup(jPanel2Layout.createSequentialGroup()
-                                        .addComponent(AddTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 80, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addGap(12, 12, 12)
-                                        .addComponent(UpdateTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 68, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                                        .addComponent(DeleteTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 74, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                    .addComponent(jLabel8)
-                                    .addComponent(jComboUnitNo, javax.swing.GroupLayout.PREFERRED_SIZE, 173, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel6))
-                                .addContainerGap())))
+                            .addComponent(jLabel10)
+                            .addComponent(jSeparator2, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 281, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(ChooseDate, javax.swing.GroupLayout.PREFERRED_SIZE, 173, javax.swing.GroupLayout.PREFERRED_SIZE)))
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGap(73, 73, 73)
-                        .addComponent(Refresh, javax.swing.GroupLayout.PREFERRED_SIZE, 121, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                .addComponent(Search, javax.swing.GroupLayout.PREFERRED_SIZE, 80, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGroup(jPanel2Layout.createSequentialGroup()
+                                    .addComponent(jLabel9)
+                                    .addGap(18, 18, 18)
+                                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                        .addComponent(jLabel11)
+                                        .addComponent(TenantID, javax.swing.GroupLayout.PREFERRED_SIZE, 170, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                            .addComponent(jLabel2)
+                            .addComponent(LastName, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel4)
+                            .addComponent(FirstName, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel5)
+                            .addComponent(ContactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(Email, javax.swing.GroupLayout.PREFERRED_SIZE, 248, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel8)
+                            .addComponent(jComboUnitNo, javax.swing.GroupLayout.PREFERRED_SIZE, 173, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel6)
+                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                .addGroup(jPanel2Layout.createSequentialGroup()
+                                    .addComponent(jtxtTenantDetails, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                                    .addComponent(Refresh, javax.swing.GroupLayout.PREFERRED_SIZE, 121, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGroup(jPanel2Layout.createSequentialGroup()
+                                    .addComponent(AddTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 80, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addGap(12, 12, 12)
+                                    .addComponent(UpdateTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 68, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                                    .addComponent(DeleteTenant, javax.swing.GroupLayout.PREFERRED_SIZE, 74, javax.swing.GroupLayout.PREFERRED_SIZE))))
                         .addContainerGap())))
             .addGroup(jPanel2Layout.createSequentialGroup()
                 .addComponent(jSeparator1, javax.swing.GroupLayout.PREFERRED_SIZE, 940, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -358,7 +425,9 @@ public class Tenant extends javax.swing.JInternalFrame {
                             .addComponent(UpdateTenant)
                             .addComponent(DeleteTenant))
                         .addGap(18, 18, 18)
-                        .addComponent(Refresh))
+                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(Refresh)
+                            .addComponent(jtxtTenantDetails)))
                     .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 573, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addContainerGap(24, Short.MAX_VALUE))
         );
@@ -716,6 +785,28 @@ public class Tenant extends javax.swing.JInternalFrame {
         populateTenantComboBox();
     }//GEN-LAST:event_RefreshActionPerformed
 
+    private void jtxtTenantDetailsActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jtxtTenantDetailsActionPerformed
+    int selectedRow = TenantTable.getSelectedRow();
+    if (selectedRow == -1) {
+        JOptionPane.showMessageDialog(this, "Choose Tenant.", "Warning", JOptionPane.WARNING_MESSAGE);
+        return;
+    }
+
+    int TenantID = (int) TenantTable.getValueAt(selectedRow, 0);
+
+    String tenantDetails = getTenantDetailsFromDatabase(TenantID);
+
+    String paymentDetails = getPaymentDetailsFromDatabase(TenantID);
+
+    TenantDetails TD = new TenantDetails();
+    TD.setVisible(true);
+    TD.updateTenantDetails(tenantDetails);
+    TD.updatePaymentDetails(paymentDetails);
+
+    this.dispose();
+        
+    }//GEN-LAST:event_jtxtTenantDetailsActionPerformed
+
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton AddTenant;
@@ -746,5 +837,6 @@ public class Tenant extends javax.swing.JInternalFrame {
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JSeparator jSeparator1;
     private javax.swing.JSeparator jSeparator2;
+    private javax.swing.JButton jtxtTenantDetails;
     // End of variables declaration//GEN-END:variables
 }
